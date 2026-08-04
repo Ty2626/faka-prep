@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>法考冲刺备考站</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+</head>
+<body>
+<div id="app">
+  <button class="mobile-menu-btn" @click="sidebarOpen = !sidebarOpen">☰</button>
+
+  <div class="app-layout">
+    <!-- ===== 侧边栏 ===== -->
+    <aside class="sidebar" :class="{open: sidebarOpen}">
+      <div class="sidebar-header">
+        <h1>⚖️ 法考冲刺站</h1>
+        <p>两个月，一战过关</p>
+      </div>
+      <nav class="nav-menu">
+        <div class="nav-item" :class="{active: currentPage==='home'}" @click="navigate('home')">
+          <span class="nav-icon">🏠</span> 首页
+        </div>
+        <div class="nav-item" :class="{active: currentPage==='plan'}" @click="navigate('plan')">
+          <span class="nav-icon">📅</span> 学习计划
+        </div>
+        <div class="nav-item" :class="{active: currentPage==='notes'}" @click="navigate('notes')">
+          <span class="nav-icon">📝</span> 知识笔记
+        </div>
+        <div class="nav-item" :class="{active: currentPage==='quiz'}" @click="navigate('quiz')">
+          <span class="nav-icon">✏️</span> 刷题练习
+        </div>
+        <div class="nav-item" :class="{active: currentPage==='errors'}" @click="navigate('errors')">
+          <span class="nav-icon">❌</span> 错题本
+          <span v-if="errorBook.length" style="margin-left:auto;background:#F44336;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px">{{errorBook.length}}</span>
+        </div>
+        <div class="nav-item" :class="{active: currentPage==='flashcards'}" @click="navigate('flashcards')">
+          <span class="nav-icon">🎴</span> 背诵卡片
+        </div>
+      </nav>
+      <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,0.1);margin-top:auto">
+        <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:8px">距考试 {{countdownDays}} 天</div>
+        <button class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.2);width:100%;margin-bottom:6px" @click="exportData">导出数据</button>
+        <label class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.2);width:100%;display:block;text-align:center;cursor:pointer;margin-bottom:6px">
+          导入数据<input type="file" style="display:none" @change="importData">
+        </label>
+        <button class="btn btn-outline" style="color:rgba(255,255,255,0.5);border-color:rgba(255,255,255,0.1);width:100%;font-size:12px" @click="resetData">重置全部</button>
+      </div>
+    </aside>
+
+    <!-- ===== 主内容区 ===== -->
+    <main class="main-content">
+
+      <!-- ========== 首页 ========== -->
+      <div v-if="currentPage==='home'">
+        <div class="home-grid">
+          <!-- 倒计时 -->
+          <div class="countdown-card">
+            <div class="countdown-label">距离法考还有</div>
+            <div class="countdown-number">{{countdownDays}}</div>
+            <div class="countdown-label">天</div>
+            <div class="countdown-date">考试日期：{{examDateText}}</div>
+          </div>
+
+          <!-- 今日进度 -->
+          <div class="card">
+            <div class="card-title">📊 今日进度</div>
+            <div class="progress-ring-wrap">
+              <div class="progress-ring">
+                <svg width="100" height="100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e8e8e8" stroke-width="8"></circle>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#4A90D9" stroke-width="8"
+                    :stroke-dasharray="264" :stroke-dashoffset="264 - 264 * todayProgress / 100" stroke-linecap="round"></circle>
+                </svg>
+                <div class="progress-ring-text">
+                  <div class="num">{{todayProgress}}%</div>
+                  <div class="lbl">今日完成</div>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;color:#666;margin-bottom:8px">今日任务：{{todayTasks.length}} 项</div>
+                <div style="font-size:13px;color:#666;margin-bottom:8px">连续打卡：{{streakDays}} 天 🔥</div>
+                <button class="btn btn-primary" style="width:100%" @click="toggleCheckin">
+                  {{checkins[todayStr] ? '✅ 今日已打卡' : '📝 今日打卡'}}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 今日任务 -->
+        <div class="card">
+          <div class="card-title">🎯 今日学习任务</div>
+          <div v-if="todayTasks.length === 0" class="empty-state">
+            <div class="icon">🌴</div>
+            <div class="text">今天没有安排任务，休息一下吧～</div>
+          </div>
+          <div v-for="task in todayTasks" :key="task.date" class="today-task" :class="{done: taskDone[task.date]}">
+            <div class="task-check" :class="{checked: taskDone[task.date]}" @click="toggleTask(task.date)">
+              <span v-if="taskDone[task.date]">✓</span>
+            </div>
+            <div style="flex:1">
+              <div class="task-text">
+                <span class="task-subject-tag" :style="subjectTagStyle(task.subject)">{{task.subject}}</span>
+                <span class="task-type-tag" :class="'type-' + task.type">{{task.type === 'study' ? '新学' : task.type === 'review' ? '复习' : '刷题'}}</span>
+                {{task.task}}
+              </div>
+              <div style="font-size:12px;color:#999;margin-top:4px">{{task.day}} · 预计 {{task.duration}} 小时</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 总体进度 + 各科目 -->
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-title">📈 总体进度</div>
+            <div class="progress-ring-wrap" style="margin-bottom:16px">
+              <div class="progress-ring">
+                <svg width="100" height="100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#e8e8e8" stroke-width="8"></circle>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#4CAF50" stroke-width="8"
+                    :stroke-dasharray="264" :stroke-dashoffset="264 - 264 * overallProgress / 100" stroke-linecap="round"></circle>
+                </svg>
+                <div class="progress-ring-text">
+                  <div class="num">{{overallProgress}}%</div>
+                  <div class="lbl">总进度</div>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;color:#666;margin-bottom:4px">已完成 {{Object.keys(taskDone).length}} / {{STUDY_PLAN.length}} 天</div>
+                <div style="font-size:13px;color:#666;margin-bottom:4px">刷题：{{quizStats.total}} 题</div>
+                <div style="font-size:13px;color:#666">正确率：{{quizAccuracy}}%</div>
+              </div>
+            </div>
+            <div v-for="s in subjectProgressList" :key="s.name" class="subject-progress-item">
+              <div class="name">{{s.name}}</div>
+              <div class="bar">
+                <div class="progress-bar"><div class="progress-bar-fill" :style="{width: s.pct + '%', background: s.color}"></div></div>
+              </div>
+              <div class="pct">{{s.pct}}%</div>
+            </div>
+          </div>
+
+          <!-- 打卡热力图 -->
+          <div class="card">
+            <div class="card-title">🔥 打卡热力图（近60天）</div>
+            <div class="heatmap">
+              <div v-for="cell in heatmapData" :key="cell.date"
+                class="heatmap-cell" :class="'l' + cell.level"
+                :title="heatmapTooltip(cell)"></div>
+            </div>
+            <div class="heatmap-legend">
+              <span>少</span>
+              <div class="heatmap-cell" style="width:12px;height:12px"></div>
+              <div class="heatmap-cell l1" style="width:12px;height:12px"></div>
+              <div class="heatmap-cell l2" style="width:12px;height:12px"></div>
+              <div class="heatmap-cell l3" style="width:12px;height:12px"></div>
+              <div class="heatmap-cell l4" style="width:12px;height:12px"></div>
+              <span>多</span>
+            </div>
+            <div style="margin-top:16px;font-size:13px;color:#666">
+              <strong>{{streakDays}}</strong> 天连续打卡 · 共 <strong>{{Object.keys(checkins).length}}</strong> 天打卡
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 学习计划 ========== -->
+      <div v-if="currentPage==='plan'">
+        <div class="toolbar">
+          <div class="page-title">📅 八周冲刺计划</div>
+          <div style="font-size:13px;color:#999">当前第 {{currentWeek}} 周</div>
+        </div>
+        <div v-for="w in planByWeek" :key="w.week" class="plan-week">
+          <div class="plan-week-header">
+            <span class="week-badge">第 {{w.week}} 周</span>
+            <span style="font-size:13px;color:#999">
+              {{w.days[0].date}} ~ {{w.days[w.days.length-1].date}}
+            </span>
+          </div>
+          <div v-for="day in w.days" :key="day.date"
+            class="plan-day"
+            :class="{done: taskDone[day.date], today: day.date === todayStr}">
+            <div class="plan-date">{{day.date.slice(5)}}</div>
+            <div class="plan-day-name">{{day.day}}</div>
+            <div class="task-check" :class="{checked: taskDone[day.date]}" @click="toggleTask(day.date)" style="margin-right:4px">
+              <span v-if="taskDone[day.date]">✓</span>
+            </div>
+            <div class="plan-task">
+              <span class="task-subject-tag" :style="subjectTagStyle(day.subject)">{{day.subject}}</span>
+              <span class="task-type-tag" :class="'type-' + day.type">{{day.type === 'study' ? '新学' : day.type === 'review' ? '复习' : '刷题'}}</span>
+              {{day.task}}
+            </div>
+            <div class="plan-duration">{{day.duration}}h</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 知识笔记 ========== -->
+      <div v-if="currentPage==='notes'">
+        <div class="toolbar">
+          <div class="page-title">📝 知识笔记</div>
+          <button class="btn btn-primary" @click="saveNote">💾 保存</button>
+        </div>
+        <div class="notes-layout">
+          <!-- 目录树 -->
+          <div class="notes-tree card">
+            <div class="card-title">📚 科目目录</div>
+            <div v-for="s in SUBJECTS" :key="s.id">
+              <div class="tree-subject" :style="{color: s.color}">{{s.name}}</div>
+              <div v-for="topic in s.topics" :key="s.id + topic"
+                class="tree-item tree-topic"
+                :class="{active: currentNoteKey === s.name + '/' + topic}"
+                @click="selectNote(s.name + '/' + topic)">
+                {{topic}}
+              </div>
+            </div>
+          </div>
+          <!-- 编辑区 -->
+          <div class="notes-editor">
+            <div v-if="currentNoteKey" style="margin-bottom:12px">
+              <h3 style="margin-bottom:4px">{{currentNoteKey}}</h3>
+              <p style="font-size:12px;color:#999">用 Markdown 格式编写，点击保存按钮存储到本地</p>
+            </div>
+            <textarea v-if="currentNoteKey" class="notes-textarea"
+              v-model="notes[currentNoteKey]"
+              placeholder="在这里输入笔记内容..."></textarea>
+            <div v-if="currentNoteKey" style="margin-top:16px">
+              <div style="font-size:13px;color:#999;margin-bottom:8px">预览：</div>
+              <div class="notes-preview" v-html="renderNote(currentNoteKey)"></div>
+            </div>
+            <div v-if="!currentNoteKey" class="empty-state">
+              <div class="icon">📝</div>
+              <div class="text">从左侧选择一个科目开始记笔记</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 刷题练习 ========== -->
+      <div v-if="currentPage==='quiz'">
+        <div class="toolbar">
+          <div class="page-title">✏️ 刷题练习</div>
+          <div style="font-size:13px;color:#999">
+            本次：{{quizSessionCorrect}}/{{quizSessionTotal}} · 总计：{{quizStats.correct}}/{{quizStats.total}}（{{quizAccuracy}}%）
+          </div>
+        </div>
+        <!-- 筛选 -->
+        <div class="quiz-filter">
+          <button class="filter-btn" :class="{active: quizFilter==='all'}" @click="quizFilter='all'; quizIndex=0; selectedOption=null; showAnalysis=false">全部</button>
+          <button class="filter-btn" :class="{active: quizFilter==='errors'}" @click="quizFilter='errors'; quizIndex=0; selectedOption=null; showAnalysis=false">错题重做</button>
+          <button v-for="s in SUBJECTS" :key="s.id" class="filter-btn" :class="{active: quizFilter===s.name}"
+            @click="quizFilter=s.name; quizIndex=0; selectedOption=null; showAnalysis=false">{{s.name}}</button>
+        </div>
+
+        <div class="quiz-container">
+          <div v-if="currentQuestion" class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <span class="task-subject-tag" :style="subjectTagStyle(currentQuestion.subject)">{{currentQuestion.subject}}</span>
+              <span style="font-size:12px;color:#999">{{quizIndex + 1}} / {{filteredQuestions.length}}</span>
+            </div>
+            <div class="quiz-question">{{currentQuestion.question}}</div>
+            <ul class="quiz-options">
+              <li v-for="(opt, idx) in currentQuestion.options" :key="idx"
+                class="quiz-option" :class="optionClass(idx)"
+                @click="selectOption(idx)">
+                <span class="option-label">{{String.fromCharCode(65 + idx)}}</span>
+                <span>{{opt}}</span>
+              </li>
+            </ul>
+            <div v-if="showAnalysis" class="quiz-analysis">
+              <strong>解析：</strong>{{currentQuestion.analysis}}
+            </div>
+            <div v-if="showAnalysis" style="display:flex;justify-content:space-between;margin-top:16px">
+              <button class="btn btn-outline" @click="prevQuestion">← 上一题</button>
+              <button class="btn btn-primary" @click="nextQuestion">下一题 →</button>
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            <div class="icon">✏️</div>
+            <div class="text">该分类下暂无题目</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 错题本 ========== -->
+      <div v-if="currentPage==='errors'">
+        <div class="toolbar">
+          <div class="page-title">❌ 错题本</div>
+          <div style="font-size:13px;color:#999">共 {{errorBook.length}} 道错题</div>
+        </div>
+        <div v-if="errorQuestions.length === 0" class="empty-state">
+          <div class="icon">🎉</div>
+          <div class="text">还没有错题，继续保持！</div>
+        </div>
+        <div v-for="q in errorQuestions" :key="q.id" class="error-item">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+            <span class="task-subject-tag" :style="subjectTagStyle(q.subject)">{{q.subject}} · {{q.topic}}</span>
+            <button class="btn btn-outline" style="font-size:12px;padding:2px 8px" @click="removeError(q.id)">移除</button>
+          </div>
+          <div class="question-text">{{q.question}}</div>
+          <div class="wrong-answer">❌ 你选了：{{q.options[q.wrongSelected]}}</div>
+          <div class="correct-answer">✅ 正确答案：{{q.options[q.answer]}}</div>
+          <div style="margin-top:8px;font-size:13px;color:#666;background:#fffbe6;padding:8px;border-radius:4px">
+            <strong>解析：</strong>{{q.analysis}}
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 背诵卡片 ========== -->
+      <div v-if="currentPage==='flashcards'">
+        <div class="toolbar">
+          <div class="page-title">🎴 背诵卡片</div>
+          <div style="font-size:13px;color:#999">待复习：{{dueFlashcards.length}} 张 · 共 {{FLASHCARDS.length}} 张</div>
+        </div>
+        <div class="flashcard-container">
+          <div v-if="currentFlashcard">
+            <div style="margin-bottom:12px">
+              <span class="task-subject-tag" :style="subjectTagStyle(currentFlashcard.subject)">{{currentFlashcard.subject}}</span>
+              <span style="font-size:12px;color:#999">{{currentFlashcard.topic}} · {{fcIndex + 1}}/{{dueFlashcards.length}}</span>
+            </div>
+            <div class="flashcard" :class="{flipped: fcFlipped}" @click="flipCard()">
+              <div class="flashcard-inner">
+                <div class="flashcard-front">
+                  <h3>问题</h3>
+                  <p style="font-size:16px;font-weight:500;text-align:center;line-height:1.8">{{currentFlashcard.front}}</p>
+                  <p class="hint">点击卡片翻转查看答案</p>
+                </div>
+                <div class="flashcard-back">
+                  <h3>答案</h3>
+                  <div class="content">{{currentFlashcard.back}}</div>
+                </div>
+              </div>
+            </div>
+            <div class="flashcard-controls">
+              <button class="fc-btn fc-btn-flip" @click="flipCard()">翻转</button>
+              <button class="fc-btn fc-btn-again" @click="rateCard('again')">不会</button>
+              <button class="fc-btn fc-btn-hard" @click="rateCard('hard')">困难</button>
+              <button class="fc-btn fc-btn-easy" @click="rateCard('easy')">简单</button>
+              <button class="fc-btn btn-outline" @click="skipCard()">跳过</button>
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            <div class="icon">✅</div>
+            <div class="text">今日卡片全部复习完毕！</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ===== 依赖 ===== -->
+<script src="js/vue.global.prod.js"></script>
+<script src="js/marked.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>app.mount('#app');</script>
+</body>
+</html>
